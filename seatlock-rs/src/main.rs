@@ -43,11 +43,20 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Mirrors Spring Boot's `/actuator/health` with probes enabled and details hidden.
-/// TODO(parity): confirm the exact body against the Java oracle capture.
-async fn health(State(pool): State<PgPool>) -> (StatusCode, Json<Value>) {
+/// Verified against the Java capture in parity/java-health.json.
+async fn health(State(pool): State<PgPool>) -> (StatusCode, Json<Health>) {
     let status = db_status(&pool).await;
     let code = if status == "UP" { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
-    (code, Json(json!({ "groups": ["liveness", "readiness"], "status": status })))
+    (code, Json(Health { status, groups: ["liveness", "readiness"] }))
+}
+
+/// A struct, not `json!`: serde_json's `json!` map sorts keys alphabetically, but Jackson writes
+/// fields in declaration order ({"status":..,"groups":..}). Field order here mirrors Java so the
+/// bytes match, not just the JSON value.
+#[derive(serde::Serialize)]
+struct Health {
+    status: &'static str,
+    groups: [&'static str; 2],
 }
 
 async fn probe_up() -> Json<Value> {
