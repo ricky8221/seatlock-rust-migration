@@ -63,7 +63,9 @@ python3 bench/sampler.py --container "$CONTAINER" --out "$RUN_DIR/memory.csv" \
 SAMPLER_PID=$!
 
 START=$(date +%s)
-until curl -fsS -o /dev/null http://127.0.0.1:8080/actuator/health; do
+# -s without -S: while the JVM boots, Docker Desktop accepts the connection and closes it
+# (curl 52 "Empty reply"); those expected failures are not worth printing.
+until curl -fs -o /dev/null http://127.0.0.1:8080/actuator/health; do
   sleep 0.2
   if (( $(date +%s) - START > 180 )); then echo "service not healthy after 180s" >&2; exit 1; fi
 done
