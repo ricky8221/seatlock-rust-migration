@@ -1,0 +1,140 @@
+# Benchmark + parity environment for the seatlock Java -> Rust migration.
+#
+# Exactly ONE app service runs at a time (bench/run.sh enforces this), each with identical
+# CPU/memory limits, against a freshly migrated PostgreSQL. All app variants listen on 8080
+# inside the network and are published on 127.0.0.1:8080.
+#
+#   docker compose up -d postgres flyway            # schema only
+#   docker compose --profile java up -d java        # Java as shipped
+#   docker compose --profile rust up -d rust        # Rust
+#   bench/run.sh java|java-tuned|rust               # full idle/sustained/peak run
+name: seatlock-bench
+
+x-app-limits: &app-limits
+  cpus: ${APP_CPUS:-2}
+  mem_limit: ${APP_MEM:-1g}
+  memswap_limit: ${APP_MEM:-1g}   # no swap: RSS must stay honest
+
+x-db-env: &db-env
+  DB_URL: jdbc:postgresql://postgres:5432/seats
+  DB_USER: seats
+  DB_PASSWORD: seats
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-10}   # Hikari default in seatlock; sqlx uses the same value
+
+# Java runs Flyway in neither variant: the flyway service below migrates once for both services,
+# so the two apps do equal work at startup. Hibernate still validates the schema (ddl-auto=validate).
+x-java-env: &java-env
+  <<: *db-env
+  SPRING_FLYWAY_ENABLED: "false"
+
+# Override the image's ENTRYPOINT so JVM flags are explicit per variant. `exec` keeps java as
+# PID 1, which is what bench/sampler.py reads (/proc/1/status).
+x-java-entrypoint: &java-entrypoint
+  ["sh", "-c", "exec java $$JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sl-postgres
+    environment:
+      POSTGRES_DB: seats
+      POSTGRES_USER: seats
+      POSTGRES_PASSWORD: seats
+    ports:
+      - "127.0.0.1:5432:5432"
+    # No volume: `docker compose down -v` gives every run an empty database.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seats -d seats"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Applies seatlock's own V1/V2 migrations, unchanged, from the pinned submodule.
+  flyway:
+    image: flyway/flyway:10.17.0-alpine
+    container_name: sl-flyway
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: -url=jdbc:postgresql://postgres:5432/seats -user=seats -password=seats -connectRetries=10 migrate
+    volumes:
+      - ./reference/src/main/resources/db/migration:/flyway/sql:ro
+
+  # Java as shipped: the reference Dockerfile's own flag (MaxRAMPercentage=75), default G1.
+  java:
+    profiles: ["java"]
+    build: ./reference
+    image: seatlock-java:f345bda
+    container_name: sl-java
+    <<: *app-limits
+    entrypoint: *java-entrypoint
+    environment:
+      <<: *java-env
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75"
+    depends_on: &app-depends
+      flyway:
+        condition: service_completed_successfully
+    ports: ["127.0.0.1:8080:8080"]
+
+  # Java tuned for memory without hurting latency: the fair baseline Rust is compared against.
+  # Every flag here is a documented knob a JVM team would reasonably reach for first.
+  java-tuned:
+    profiles: ["java-tuned"]
+    build: ./reference
+    image: seatlock-java:f345bda   # same image as `java`; only JVM flags differ
+    container_name: sl-java-tuned
+    <<: *app-limits
+    entrypoint: *java-entrypoint
+    environment:
+      <<: *java-env
+      JAVA_OPTS: >-
+        -XX:+UseSerialGC
+        -Xms64m -Xmx256m
+        -Xss512k
+        -XX:ReservedCodeCacheSize=64m
+        -XX:MaxMetaspaceSize=128m
+      SERVER_TOMCAT_THREADS_MAX: "50"
+    depends_on: *app-depends
+    ports: ["127.0.0.1:8080:8080"]
+
+  # Diagnostic only (NOT a benchmark run): JDK runtime image for jcmd + Native Memory Tracking,
+  # which explains where JVM RSS goes (heap, metaspace, code cache, threads, GC). See bench/jvm-nmt.sh.
+  java-nmt:
+    profiles: ["java-nmt"]
+    build:
+      context: ./reference
+      args:
+        RUNTIME_IMAGE: eclipse-temurin:21-jdk-alpine
+    image: seatlock-java-jdk:f345bda
+    container_name: sl-java-nmt
+    <<: *app-limits
+    entrypoint: *java-entrypoint
+    environment:
+      <<: *java-env
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:NativeMemoryTracking=summary"
+    depends_on: *app-depends
+    ports: ["127.0.0.1:8080:8080"]
+
+  rust:
+    profiles: ["rust"]
+    build: ./seatlock-rs
+    image: seatlock-rs:local
+    container_name: sl-rust
+    <<: *app-limits
+    environment:
+      <<: *db-env
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on: *app-depends
+    ports: ["127.0.0.1:8080:8080"]
+
+  # Load generator. Runs on demand: docker compose run --rm k6 run /scripts/sustained.js
+  k6:
+    profiles: ["load"]
+    image: grafana/k6:1.0.0
+    container_name: sl-k6
+    cpus: ${K6_CPUS:-2}
+    environment:
+      BASE_URL: ${BASE_URL:-http://java:8080}
+    volumes:
+      - ./bench/k6:/scripts:ro
+      - ./bench/results:/results
