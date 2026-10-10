@@ -1,0 +1,6 @@
+seatlock-rs/target/
+bench/results/*/
+!bench/results/.gitkeep
+!bench/results/COMPARISON.md
+__pycache__/
+.DS_Store
