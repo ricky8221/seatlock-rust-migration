@@ -41,7 +41,9 @@ services:
       POSTGRES_USER: seats
       POSTGRES_PASSWORD: seats
     ports:
-      - "127.0.0.1:5432:5432"
+      # 5433 on the host so a locally installed PostgreSQL on 5432 does not block the stack.
+      # Nothing in the benchmark uses this port; it is only for psql/DataGrip.
+      - "127.0.0.1:${PG_HOST_PORT:-5433}:5432"
     # No volume: `docker compose down -v` gives every run an empty database.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U seats -d seats"]

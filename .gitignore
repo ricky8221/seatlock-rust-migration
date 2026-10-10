@@ -4,3 +4,4 @@ bench/results/*/
 !bench/results/COMPARISON.md
 __pycache__/
 .DS_Store
+.idea/
