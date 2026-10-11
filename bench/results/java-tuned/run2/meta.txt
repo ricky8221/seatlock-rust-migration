@@ -1,7 +1,8 @@
 target=java-tuned
+service=java-tuned variant=none tokio_worker_threads=default malloc_arena_max=default
 label=run2
-started_utc=2026-10-11T02:13:52Z
-repo_commit=b90c8b8ae8ee475c4ae1d30e92d278b012b1697e
+started_utc=2026-10-11T17:40:14Z
+repo_commit=2de6cb33b108bb30b260177b5ab170f373219b3d
 reference_commit=f345bda22c9e11d7a5b2440d5416c3e1e899500f
 app_cpus=2 app_mem=1g db_pool=10
 docker_arch=aarch64 docker_cpus=10 docker_mem=8222072832
@@ -41,4 +42,4 @@ docker_arch=aarch64 docker_cpus=10 docker_mem=8222072832
         published: "8080"
         protocol: tcp
   postgres:
-startup_seconds=4
+startup_seconds=5

@@ -1,27 +1,25 @@
-     ✗ status in 200
-      ↳  56% — ✓ 34518 / ✗ 26548
-     ✗ status in 201/409
-      ↳  58% — ✓ 5893 / ✗ 4260
+     ✓ status in 200
+     ✓ status in 201/409
 
-     biz_bookings_confirmed.........: 2031   6.121921/s
-     biz_hold_conflicts.............: 133    0.400894/s
-     biz_holds_placed...............: 3729   11.2401/s
-   ✗ biz_unexpected_status..........: 30808  92.862702/s
-     checks.........................: 56.74% ✓ 40411      ✗ 30808
-     data_received..................: 130 MB 392 kB/s
-     data_sent......................: 11 MB  35 kB/s
-   ✗ dropped_iterations.............: 38325  115.520743/s
-     http_req_blocked...............: avg=113.98µs min=750ns    med=4.04µs  p(90)=201.91µs p(95)=310.56µs p(99)=1.08ms   max=77.9ms  
-     http_req_connecting............: avg=86.04µs  min=0s       med=0s      p(90)=141.25µs p(95)=227.44µs p(99)=888.32µs max=77.86ms 
-     http_req_duration..............: avg=1.33s    min=306.5µs  med=1.5ms   p(90)=6.68ms   p(95)=43.58ms  p(99)=1m0s     max=1m0s    
-       { expected_response:true }...: avg=5.99ms   min=306.5µs  med=1.4ms   p(90)=3.42ms   p(95)=8.31ms   p(99)=149.2ms  max=715.01ms
-     http_req_failed................: 43.22% ✓ 30808      ✗ 40461
-     http_req_receiving.............: avg=105.14µs min=0s       med=48.87µs p(90)=117.25µs p(95)=190.39µs p(99)=891.91µs max=99.06ms 
-     http_req_sending...............: avg=29.3µs   min=2.33µs   med=16.58µs p(90)=49.25µs  p(95)=64.41µs  p(99)=146.7µs  max=76.11ms 
-     http_req_tls_handshaking.......: avg=0s       min=0s       med=0s      p(90)=0s       p(95)=0s       p(99)=0s       max=0s      
-     http_req_waiting...............: avg=1.33s    min=284.12µs med=1.41ms  p(90)=6.36ms   p(95)=42.7ms   p(99)=1m0s     max=1m0s    
-     http_reqs......................: 71269  214.82186/s
-     iteration_duration.............: avg=1.49s    min=360.08µs med=1.68ms  p(90)=9.48ms   p(95)=55.92ms  p(99)=1m0s     max=1m0s    
-     iterations.....................: 63626  191.784025/s
-     vus............................: 50     min=0        max=800
-     vus_max........................: 800    min=100      max=800
+     biz_bookings_confirmed.........: 6090    20.182256/s
+     biz_hold_conflicts.............: 927     3.072077/s
+     biz_holds_placed...............: 11073   36.695915/s
+   ✓ biz_unexpected_status..........: 0       0/s
+     checks.........................: 100.00% ✓ 124710     ✗ 0     
+     data_received..................: 367 MB  1.2 MB/s
+     data_sent......................: 20 MB   66 kB/s
+   ✓ dropped_iterations.............: 18      0.059652/s
+     http_req_blocked...............: avg=5.2µs   min=708ns    med=2.12µs  p(90)=4.12µs  p(95)=6.33µs  p(99)=106.67µs max=6.98ms  
+     http_req_connecting............: avg=1.81µs  min=0s       med=0s      p(90)=0s      p(95)=0s      p(99)=68.26µs  max=6.95ms  
+     http_req_duration..............: avg=2.4ms   min=273.91µs med=1.23ms  p(90)=2.42ms  p(95)=3.12ms  p(99)=19.6ms   max=596.53ms
+       { expected_response:true }...: avg=2.4ms   min=273.91µs med=1.23ms  p(90)=2.42ms  p(95)=3.12ms  p(99)=19.6ms   max=596.53ms
+     http_req_failed................: 0.00%   ✓ 0          ✗ 124760
+     http_req_receiving.............: avg=49.99µs min=5.62µs   med=32.95µs p(90)=65.62µs p(95)=85.12µs p(99)=166.05µs max=79.25ms 
+     http_req_sending...............: avg=13.03µs min=2.16µs   med=11.2µs  p(90)=19.87µs p(95)=25.87µs p(99)=49.04µs  max=9ms     
+     http_req_tls_handshaking.......: avg=0s      min=0s       med=0s      p(90)=0s      p(95)=0s      p(99)=0s       max=0s      
+     http_req_waiting...............: avg=2.34ms  min=247.95µs med=1.18ms  p(90)=2.36ms  p(95)=3.05ms  p(99)=18.96ms  max=596.49ms
+     http_reqs......................: 124760  413.454556/s
+     iteration_duration.............: avg=3.05ms  min=329.5µs  med=1.29ms  p(90)=4.18ms  p(95)=6.77ms  p(99)=26.22ms  max=1.12s   
+     iterations.....................: 101983  337.971594/s
+     vus............................: 2       min=0        max=74  
+     vus_max........................: 104     min=100      max=104 

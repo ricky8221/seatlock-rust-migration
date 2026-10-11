@@ -1,25 +1,27 @@
 {
   "target": "java-tuned",
+  "valid": true,
+  "problems": [],
   "label": "run3",
   "startup_seconds": 5,
   "memory": {
     "rss_mib": {
       "idle": 275.3,
-      "sustained_p50": 332.9,
-      "sustained_max": 344.8,
+      "sustained_p50": 333.6,
+      "sustained_max": 343.8,
       "peak": 367.1,
-      "post_peak": 364.9
+      "post_peak": 365.0
     },
     "cgroup_mib": {
-      "idle": 317.0,
-      "sustained_p50": 330.9,
+      "idle": 317.2,
+      "sustained_p50": 376.2,
       "peak": 409.9
     },
     "threads": {
-      "idle": 31,
+      "idle": 31.0,
       "peak": 72
     },
-    "samples": 1363
+    "samples": 682
   },
   "sustained": {
     "latency_ms": {

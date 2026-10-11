@@ -1,0 +1,58 @@
+{
+  "target": "rust@pool5",
+  "valid": true,
+  "problems": [],
+  "label": "run1",
+  "startup_seconds": 0,
+  "memory": {
+    "rss_mib": {
+      "idle": 4.4,
+      "sustained_p50": 7.6,
+      "sustained_max": 7.6,
+      "peak": 21.1,
+      "post_peak": 17.6
+    },
+    "cgroup_mib": {
+      "idle": 2.3,
+      "sustained_p50": 6.1,
+      "peak": 20.1
+    },
+    "threads": {
+      "idle": 3.0,
+      "peak": 3
+    },
+    "samples": 677
+  },
+  "sustained": {
+    "latency_ms": {
+      "p50": 0.98,
+      "p95": 3.27,
+      "p99": 6.29,
+      "max": 111.09
+    },
+    "throughput_rps": 415.3,
+    "requests": 124887,
+    "failed_rate": 0,
+    "dropped_iterations": 0,
+    "unexpected_status": 0,
+    "holds_placed": 11133,
+    "hold_conflicts": 867,
+    "bookings_confirmed": 6109
+  },
+  "peak": {
+    "latency_ms": {
+      "p50": 1.11,
+      "p95": 84.37,
+      "p99": 101.71,
+      "max": 435.45
+    },
+    "throughput_rps": 1882.4,
+    "requests": 424701,
+    "failed_rate": 0,
+    "dropped_iterations": 4212,
+    "unexpected_status": 0,
+    "holds_placed": 35961,
+    "hold_conflicts": 71260,
+    "bookings_confirmed": 19724
+  }
+}

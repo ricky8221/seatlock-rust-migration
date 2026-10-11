@@ -1,0 +1,58 @@
+{
+  "target": "rust@arena2",
+  "valid": true,
+  "problems": [],
+  "label": "run1",
+  "startup_seconds": 0,
+  "memory": {
+    "rss_mib": {
+      "idle": 6.3,
+      "sustained_p50": 9.6,
+      "sustained_max": 9.6,
+      "peak": 21.7,
+      "post_peak": 20.0
+    },
+    "cgroup_mib": {
+      "idle": 7.2,
+      "sustained_p50": 11.2,
+      "peak": 23.9
+    },
+    "threads": {
+      "idle": 3.0,
+      "peak": 3
+    },
+    "samples": 677
+  },
+  "sustained": {
+    "latency_ms": {
+      "p50": 1.0,
+      "p95": 3.33,
+      "p99": 5.86,
+      "max": 114.24
+    },
+    "throughput_rps": 414.9,
+    "requests": 124752,
+    "failed_rate": 0,
+    "dropped_iterations": 17,
+    "unexpected_status": 0,
+    "holds_placed": 11086,
+    "hold_conflicts": 915,
+    "bookings_confirmed": 6103
+  },
+  "peak": {
+    "latency_ms": {
+      "p50": 1.09,
+      "p95": 80.71,
+      "p99": 98.09,
+      "max": 238.92
+    },
+    "throughput_rps": 1890.6,
+    "requests": 426601,
+    "failed_rate": 0,
+    "dropped_iterations": 2040,
+    "unexpected_status": 0,
+    "holds_placed": 35853,
+    "hold_conflicts": 71787,
+    "bookings_confirmed": 19641
+  }
+}

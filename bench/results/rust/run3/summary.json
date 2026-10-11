@@ -1,5 +1,7 @@
 {
   "target": "rust",
+  "valid": true,
+  "problems": [],
   "label": "run3",
   "startup_seconds": 0,
   "memory": {
