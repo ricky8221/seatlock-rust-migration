@@ -1,7 +1,7 @@
 target=java
 label=run1
-started_utc=2026-10-10T23:47:49Z
-repo_commit=c67bd00ae0e82c048eeb15d0e30514531494ba87
+started_utc=2026-10-11T01:39:14Z
+repo_commit=3231b707045c69d0e5fc3ce7a1a6ff708f1d8229
 reference_commit=f345bda22c9e11d7a5b2440d5416c3e1e899500f
 app_cpus=2 app_mem=1g db_pool=10
 docker_arch=aarch64 docker_cpus=10 docker_mem=8222072832
@@ -40,4 +40,4 @@ docker_arch=aarch64 docker_cpus=10 docker_mem=8222072832
         published: "8080"
         protocol: tcp
   postgres:
-startup_seconds=5
+startup_seconds=4

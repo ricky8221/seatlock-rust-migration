@@ -1,7 +1,8 @@
 seatlock-rs/target/
-bench/results/*/
-!bench/results/.gitkeep
-!bench/results/COMPARISON.md
+# Benchmark results are committed as evidence (memory.csv, k6 summaries, meta, summary.json).
+# Only the noisy app logs and the transient phase marker are left out.
+bench/results/**/app.log
+bench/results/**/phase
 __pycache__/
 .DS_Store
 .idea/
