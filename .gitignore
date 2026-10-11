@@ -6,3 +6,4 @@ bench/results/**/phase
 __pycache__/
 .DS_Store
 .idea/
+parity/results/**/*.jsonl
