@@ -25,10 +25,13 @@ parity/run.sh 300 7      # quicker
 | `Allow` compared as a set | 441 | 441 | 0 |
 | 1,500 random steps, seed 42 | 1,638 | 1,638 | 0 |
 
-Races: identical outcome counts for every race except where timing legitimately differs (with 20
-concurrent retries of one Idempotency-Key, Rust finished the first request sooner, so more retries
-got a replayed 201 instead of a 409 "in progress"; both produced exactly one hold). Zero invariant
-violations on both.
+Races: the three single-winner races (50 holds on one seat, 20 confirms of one hold, 10 cancels
+of one booking) always give identical counts. In the other three (overlapping holds, release vs
+confirm, 20 retries with one Idempotency-Key), which request wins depends on thread scheduling and
+varies between runs on both services: for example Java's release won 15 of 15 rounds in one run,
+and Rust's confirm won 1 of 15 in another. What must hold, and did in every run, is the contract:
+exactly one winner per round, no seat claimed twice, one hold per key, and zero invariant
+violations in the database.
 
 ## Accepted differences
 

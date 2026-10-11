@@ -49,7 +49,7 @@ for svc in "java 8090 seats_java" "rust 8091 seats_rust"; do
     (SELECT count(*) FROM seat WHERE status <> 'AVAILABLE' AND hold_id IS NULL) + \
     (SELECT count(*) FROM (SELECT hold_id FROM booking GROUP BY hold_id HAVING count(*) > 1) x)" >> "$OUT/races-$1.txt"
 done
-echo "== races (outcome counts; which request wins is scheduling, the counts are the contract)"
+echo "== races (which request wins is scheduling; the contract is one winner per round and 0 violations)"
 paste -d'\n' "$OUT/races-java.txt" "$OUT/races-rust.txt" | sed 's/^/  /'
 echo "results in $OUT"
 exit $status
