@@ -1,73 +1,102 @@
-# seatlock-migration
+# seatlock-rust-migration
 
-Migration of [seatlock](https://github.com/srujanmalakpata/seatlock) (Java 21, Spring Boot 3.5,
-Spring Data JPA, PostgreSQL) to Rust, with functional parity and a measured reduction in memory.
-The original service is pinned as a git submodule in `reference/` at `f345bda`.
+A Java 21 / Spring Boot 3.5 service, [seatlock](https://github.com/srujanmalakpata/seatlock)
+(event seat holds with expiring holds, bookings and idempotent retries, on PostgreSQL via Spring
+Data JPA), ported to Rust with full functional parity and a measured reduction in memory.
+
+The original is pinned as a git submodule in `reference/` at
+`f345bda22c9e11d7a5b2440d5416c3e1e899500f` and is never modified.
 
 | Path | What it is |
 |---|---|
-| `reference/` | The original Java service, unmodified, at the pinned commit |
-| `seatlock-rs/` | The Rust service |
-| `compose.yaml` | PostgreSQL, a one-shot Flyway migration, the Java and Rust services, and k6 |
-| `bench/` | Memory sampler, k6 load scripts, run orchestration, result summaries |
-| `parity/` | Differential replay harness (Java as oracle) |
+| `reference/` | The original Java service at the pinned commit |
+| `seatlock-rs/` | The Rust service (axum, sqlx, tokio) |
+| `parity/` | Oracle-based equivalence tests: Java's responses are the source of truth |
+| `it/` | The reference repository's own integration tests, run against either service |
+| `bench/` | Memory sampler, k6 workloads, benchmark orchestration and results |
+| `compose.yaml` | PostgreSQL, a one-shot Flyway migration, both services, k6 |
 | `docs/WRITEUP.md` | Technical write-up |
 
-## Prerequisites
+## Reproduce from a clean checkout
 
-Docker with Compose v2, Python 3, curl, git. On Docker Desktop give the VM at least 6 CPUs and
-6 GB of memory: the service under test (2 CPUs, 1 GiB), PostgreSQL and k6 run side by side.
-
-## Quick start
+Requirements: **Docker** (with Compose v2), **git**, **Python 3.9+** and **curl**. Nothing else:
+both services, Maven, Flyway and k6 build or run in containers. On Docker Desktop give the VM at
+least 6 CPUs and 6 GB of memory.
 
 ```bash
-git clone --recurse-submodules <this repo> && cd seatlock-migration
-# or, in an existing clone: git submodule update --init
+git clone --recurse-submodules https://github.com/ricky8221/seatlock-rust-migration.git
+cd seatlock-rust-migration
+```
 
-docker compose up -d postgres flyway              # schema, from reference/ migrations
-docker compose --profile java up -d --build java  # Java service on :8080
+`--recurse-submodules` matters: without it `reference/` is empty and the Java build fails. In an
+existing clone run `git submodule update --init`.
+
+### 1. Functional parity (about 3 minutes)
+
+```bash
+parity/run.sh
+```
+
+Starts Java and Rust side by side on fresh databases, sends both the same ~140 curated requests
+plus a 1,500-step seeded random walk, diffs every response after normalization, then runs the
+concurrency races. Expected tail:
+
+```
+exchanges compared: 1638, identical after normalization: 1638
+accepted differences: 0, unexplained findings: 0
+```
+
+### 2. The reference integration tests (about 4 minutes each)
+
+```bash
+it/run.sh java   # the 27 upstream ITs against the original service (baseline)
+it/run.sh rust   # the same tests against the Rust service
+```
+
+### 3. Benchmarks (about 13 minutes per run)
+
+```bash
+bench/run.sh java-tuned     # the JVM tuned for memory: the baseline Rust is compared against
+bench/run.sh java           # the JVM as shipped
+bench/run.sh rust
+bench/summarize.py compare  # median of all runs per target -> bench/results/COMPARISON.md
+bench/jvm-nmt.sh            # diagnostic: where the JVM's memory goes (Native Memory Tracking)
+```
+
+Each run starts from an empty database and goes through startup, idle, sustained load (k6 at a
+constant ~440 req/s for 5 minutes), cooldown, peak (a flash-sale burst on 200 seats, then a ramp
+to saturation) and post-peak, sampling the service's resident memory every second. Run each target
+three times; the comparison reports medians. Committed results are in `bench/results/`.
+
+### 4. Rust unit and database tests (optional, needs Rust 1.85+)
+
+```bash
+cd seatlock-rs
+cargo test                                   # unit tests
+docker compose up -d --wait postgres flyway  # from the repo root, for the database tests
+TEST_DATABASE_URL=postgres://seats:seats@localhost:5433/seats cargo test db_tests
+```
+
+## Running a service by hand
+
+```bash
+docker compose up -d postgres flyway
+docker compose --profile rust up -d --build rust   # or: --profile java ... java
 curl -s localhost:8080/actuator/health
 reference/scripts/smoke-test.sh http://localhost:8080
-docker compose --profile java down -v
+docker compose --profile rust down -v
 ```
 
-Swap `java` for `rust` to run the Rust service on the same port.
+PostgreSQL is published on `localhost:5433` (not 5432, to avoid clashing with a local install).
 
-## Benchmarks
+## Configuration
 
-```bash
-bench/run.sh java          # Java as shipped (G1, MaxRAMPercentage=75)
-bench/run.sh java-tuned    # Java tuned for memory: the baseline Rust is compared against
-bench/run.sh rust
-bench/summarize.py compare # median of all runs per target -> bench/results/COMPARISON.md
-bench/jvm-nmt.sh           # diagnostic: JVM Native Memory Tracking breakdown (not a benchmark)
-```
+The Rust service reads the same environment as the Java one: `DB_URL` (a JDBC URL), `DB_USER`,
+`DB_PASSWORD`, `DB_POOL_SIZE` (10), `PORT` (8080), and the `seats.*` properties as
+`SEATS_HOLD_TTL`, `SEATS_MAX_SEATS_PER_HOLD`, `SEATS_EXPIRY_BATCH_SIZE`,
+`SEATS_EXPIRY_SWEEP_INTERVAL`, `SEATS_IDEMPOTENCY_RETENTION`, `SEATS_SCHEDULING_ENABLED`.
+Rust-only: `TOKIO_WORKER_THREADS` (default: one per CPU), `RUST_LOG`, and
+`SEATLOCK_TEST_HOOKS=1` for the integration tests (see `it/README.md`; never in production).
 
-Each run starts from an empty database and goes through these phases, sampling memory every
-second: startup, one warm-up request, **idle** (60 s), **sustained** (k6, constant arrival rate,
-about 440 req/s for 5 min), cooldown, **peak** (k6: a flash-sale burst on 200 seats, then a ramp
-to saturation), and post-peak. Run each target three times; the comparison reports medians.
-
-Results land in `bench/results/<target>/<label>/`: `memory.csv`, the k6 summaries, the app log,
-`meta.txt` (exact flags, limits and commits) and `summary.json`.
-
-Tunables: `APP_CPUS`, `APP_MEM`, `DB_POOL_SIZE`, `IDLE_SECONDS`, `DURATION`, `BROWSE_RPS`,
-`RESERVE_RPS`, `FLASH_RPS`, `PEAK_RPS`. Set `DEBUG=1` to log unexpected HTTP statuses from k6.
-
-### What is measured
-
-- **Memory:** VmRSS of the service process (PID 1) is the headline number; VmHWM catches spikes
-  between samples; the container cgroup's `memory.current` is recorded alongside it.
-- **Latency:** p50/p95/p99 at the same offered load (sustained phase), so the services are compared
-  under identical demand. Peak shows where each one saturates.
-- **Equal work:** both services use a 10-connection pool, neither runs migrations (the `flyway`
-  container applies the reference SQL once), and k6 counts holds, conflicts and bookings so a run
-  can show both services did the same business work.
-
-## Building the Rust service locally
-
-```bash
-cd seatlock-rs && cargo build --release && cargo test
-```
-
-Commit the generated `Cargo.lock`; the Docker build uses it when present.
+Benchmark knobs: `APP_CPUS`, `APP_MEM`, `IDLE_SECONDS`, `DURATION`, `BROWSE_RPS`,
+`RESERVE_RPS`, `FLASH_RPS`, `PEAK_RPS`; `DEBUG=1` logs unexpected statuses from k6.

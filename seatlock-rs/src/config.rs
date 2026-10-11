@@ -54,8 +54,8 @@ impl Config {
             pool_size: optional("DB_POOL_SIZE", 10)?,
             port: optional("PORT", 8080)?,
             seats,
-            scheduling_enabled: optional("SEATS_SCHEDULING_ENABLED", true)?,
-            test_hooks: optional("SEATLOCK_TEST_HOOKS", false)?,
+            scheduling_enabled: flag("SEATS_SCHEDULING_ENABLED", true)?,
+            test_hooks: flag("SEATLOCK_TEST_HOOKS", false)?,
             worker_threads: optional("TOKIO_WORKER_THREADS", 0)?,
         })
     }
@@ -86,6 +86,24 @@ where
     match std::env::var(name) {
         Ok(v) => v.trim().parse().map_err(|e| anyhow::anyhow!("{name}={v}: {e}")),
         Err(_) => Ok(default),
+    }
+}
+
+/// Booleans the way Spring's relaxed binding reads them: `true/false`, `1/0`, `yes/no`, `on/off`
+/// (case-insensitive). Rust's `bool::from_str` accepts only `true`/`false`, so
+/// `SEATLOCK_TEST_HOOKS=1` used to stop the service at startup.
+fn flag(name: &str, default: bool) -> anyhow::Result<bool> {
+    match std::env::var(name) {
+        Err(_) => Ok(default),
+        Ok(v) => parse_flag(&v).with_context(|| format!("{name}={v} is not a boolean")),
+    }
+}
+
+fn parse_flag(v: &str) -> Option<bool> {
+    match v.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" | "y" => Some(true),
+        "false" | "0" | "no" | "off" | "n" | "" => Some(false),
+        _ => None,
     }
 }
 
@@ -180,6 +198,14 @@ mod tests {
     #[test]
     fn rejects_non_postgres_urls() {
         assert!(cfg("jdbc:mysql://x/y").connect_options().is_err());
+    }
+
+    #[test]
+    fn lenient_flags() {
+        assert_eq!(parse_flag("1"), Some(true));
+        assert_eq!(parse_flag("TRUE"), Some(true));
+        assert_eq!(parse_flag("off"), Some(false));
+        assert_eq!(parse_flag("maybe"), None);
     }
 
     #[test]

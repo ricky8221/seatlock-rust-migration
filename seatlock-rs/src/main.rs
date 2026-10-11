@@ -36,6 +36,15 @@ pub struct AppState {
     pub metrics: Arc<metrics::Metrics>,
     /// springdoc's document as captured from Java, kept as text so key order is preserved.
     pub openapi: &'static str,
+    /// Test hooks only: a sweeper the integration tests can switch on at runtime
+    /// (`ScheduledExpiryIT` turns scheduling on for one test class).
+    pub test_sweeper: TestSweeper,
+}
+
+#[derive(Default)]
+pub struct TestSweeper {
+    pub enabled: std::sync::atomic::AtomicBool,
+    pub interval_ms: std::sync::atomic::AtomicU64,
 }
 
 /// The service: the router, wrapped (as a whole, not per route) in the middleware that has to
@@ -93,10 +102,14 @@ async fn run(cfg: config::Config) -> anyhow::Result<()> {
         seats: cfg.seats.clone(),
         metrics: Arc::new(metrics::Metrics::default()),
         openapi: include_str!("openapi.json"),
+        test_sweeper: TestSweeper::default(),
     });
 
     if cfg.scheduling_enabled {
         spawn_jobs(state.clone());
+    }
+    if cfg.test_hooks {
+        spawn_test_sweeper(state.clone());
     }
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", cfg.port)).await?;
@@ -131,6 +144,22 @@ fn spawn_jobs(state: Arc<AppState>) {
                 Err(e) => tracing::warn!(error = ?e, "idempotency cleanup failed"),
             }
             tokio::time::sleep(Duration::from_secs(3600)).await;
+        }
+    });
+}
+
+/// With test hooks on, a sweeper that only runs while `POST /__test/scheduling` enables it.
+fn spawn_test_sweeper(state: Arc<AppState>) {
+    use std::sync::atomic::Ordering::Relaxed;
+    tokio::spawn(async move {
+        loop {
+            let ms = state.test_sweeper.interval_ms.load(Relaxed).max(50);
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            if state.test_sweeper.enabled.load(Relaxed) {
+                if let Err(e) = service::sweep_expired_holds(&state).await {
+                    tracing::warn!(error = ?e, "test sweeper failed");
+                }
+            }
         }
     });
 }

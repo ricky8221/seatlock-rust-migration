@@ -496,3 +496,97 @@ pub async fn purge_idempotency_records(state: &AppState) -> Result<u64, ApiError
     let mut c = state.pool.acquire().await?;
     Ok(repo::delete_keys_created_before(&mut c, state.clock.now() - retention).await?)
 }
+
+/// Database-backed tests. They need a migrated PostgreSQL and are skipped unless
+/// `TEST_DATABASE_URL` is set (e.g. `postgres://seats:seats@localhost:5433/seats`).
+#[cfg(test)]
+mod db_tests {
+    use super::*;
+    use crate::input::{CreateEventRequest, CreateHoldRequest, SectionRequest};
+    use std::sync::Arc;
+
+    async fn state() -> Option<Arc<AppState>> {
+        let url = std::env::var("TEST_DATABASE_URL").ok()?;
+        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(4).connect(&url).await.expect("connect");
+        Some(Arc::new(AppState {
+            pool,
+            clock: crate::clock::Clock::System,
+            seats: crate::config::SeatsConfig {
+                hold_ttl: std::time::Duration::from_secs(120),
+                max_seats_per_hold: 10,
+                expiry_batch_size: 100,
+                expiry_sweep_interval: std::time::Duration::from_secs(5),
+                idempotency_retention: std::time::Duration::from_secs(86_400),
+            },
+            metrics: Default::default(),
+            openapi: "",
+            test_sweeper: Default::default(),
+        }))
+    }
+
+    async fn event_with_hold(s: &AppState) -> (Uuid, Vec<Uuid>, Uuid) {
+        let event = create_event(
+            s,
+            CreateEventRequest {
+                name: "stale".into(),
+                venue: "test".into(),
+                starts_at: OffsetDateTime::now_utc() + Duration::days(30),
+                sections: vec![SectionRequest { name: "S".into(), rows: 1, seats_per_row: 2, price_cents: 100 }],
+            },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("create event: {e:?}"));
+        let seats = list_seats(s, event.id, None, None, 0, 10).await.unwrap_or_else(|e| panic!("{e:?}")).items;
+        let ids: Vec<Uuid> = seats.iter().map(|x| x.id).collect();
+        let hold = place_hold(s, event.id, CreateHoldRequest { seat_ids: ids.clone(), customer_ref: "stale".into() })
+            .await
+            .unwrap_or_else(|e| panic!("hold: {e:?}"));
+        (event.id, ids, hold.hold.id)
+    }
+
+    /// Rust twin of `ConcurrencyIT.expiryWorkingFromAStaleHoldIsRejectedByTheHoldVersion` (the
+    /// one reference test that cannot run over HTTP): an expiry transaction reads the hold while
+    /// it is ACTIVE, a confirm commits on another connection, then the expiry carries on with its
+    /// stale copy. Its seat reads would be fresh; only the hold's version stops it.
+    #[tokio::test]
+    async fn expiry_working_from_a_stale_hold_is_rejected_by_the_hold_version() {
+        let Some(s) = state().await else { return };
+        let (_, seat_ids, hold_id) = event_with_hold(&s).await;
+
+        let mut sweeper = s.pool.begin().await.unwrap();
+        let mut stale = repo::find_hold(&mut sweeper, hold_id).await.unwrap().unwrap();
+        assert_eq!(stale.status, HoldStatus::ACTIVE);
+
+        confirm_hold(&s, hold_id).await.unwrap_or_else(|e| panic!("confirm: {e:?}"));
+
+        let past_ttl = OffsetDateTime::now_utc() + Duration::hours(1);
+        stale.expire(past_ttl).unwrap();
+        assert!(matches!(repo::update_hold(&mut sweeper, &stale).await, Err(WriteError::Lost)));
+        sweeper.rollback().await.unwrap();
+
+        let mut c = s.pool.acquire().await.unwrap();
+        assert_eq!(repo::find_hold(&mut c, hold_id).await.unwrap().unwrap().status, HoldStatus::CONFIRMED);
+        for seat in repo::seats_by_ids(&mut c, &seat_ids).await.unwrap() {
+            assert_eq!(seat.status, SeatStatus::BOOKED);
+        }
+    }
+
+    /// The SQL row-label expression matches `SeatMapLayout.rowLabel` for every row count the
+    /// API allows (and beyond, into three letters).
+    #[tokio::test]
+    async fn sql_row_labels_match_the_java_algorithm() {
+        let Some(s) = state().await else { return };
+        let labels: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT r, CASE WHEN r <= 26 THEN chr(64 + r) \
+                            WHEN r <= 702 THEN chr(64 + (r - 1) / 26) || chr(65 + (r - 1) % 26) \
+                            ELSE chr(64 + (r - 27) / 676) || chr(65 + ((r - 27) / 26) % 26) || chr(65 + (r - 1) % 26) END \
+             FROM generate_series(1, 2000) r",
+        )
+        .fetch_all(&s.pool)
+        .await
+        .unwrap();
+        for (r, label) in labels {
+            assert_eq!(label, domain::row_label(r), "row {r}");
+        }
+    }
+}

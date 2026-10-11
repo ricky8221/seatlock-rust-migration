@@ -30,7 +30,8 @@ pub fn routes(test_hooks: bool) -> Router<Arc<AppState>> {
             .route("/__test/clock", post(set_clock))
             .route("/__test/jobs/expire", post(run_expiry))
             .route("/__test/jobs/idempotency-cleanup", post(run_cleanup))
-            .route("/__test/holds/{holdId}/expire", post(expire_one));
+            .route("/__test/holds/{holdId}/expire", post(expire_one))
+            .route("/__test/scheduling", post(set_scheduling));
     }
     r
 }
@@ -141,4 +142,16 @@ async fn expire_one(State(state): St, Path(hold_id): Path<String>, Query(q): Que
         Err(e) => return e.into_response(),
     };
     Json(json!({ "result": result })).into_response()
+}
+
+/// `{"enabled":true,"intervalMillis":200}`: the runtime equivalent of
+/// `seats.scheduling.enabled=true` + `seats.expiry-sweep-interval=PT0.2S` for one test class.
+async fn set_scheduling(State(state): St, body: Bytes) -> Response {
+    use std::sync::atomic::Ordering::Relaxed;
+    let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let enabled = v.get("enabled").and_then(Value::as_bool).unwrap_or(false);
+    let interval = v.get("intervalMillis").and_then(Value::as_u64).unwrap_or(200);
+    state.test_sweeper.interval_ms.store(interval, Relaxed);
+    state.test_sweeper.enabled.store(enabled, Relaxed);
+    Json(json!({ "enabled": enabled, "intervalMillis": interval })).into_response()
 }

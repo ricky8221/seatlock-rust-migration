@@ -1,0 +1,363 @@
+diff --git a/src/test/java/dev/seatlock/it/AbstractPostgresIT.java b/src/test/java/dev/seatlock/it/AbstractPostgresIT.java
+index 7745e56..1efff2b 100644
+--- a/src/test/java/dev/seatlock/it/AbstractPostgresIT.java
++++ b/src/test/java/dev/seatlock/it/AbstractPostgresIT.java
+@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
+ 
+ import com.fasterxml.jackson.databind.JsonNode;
+ import dev.seatlock.support.MutableClock;
++import dev.seatlock.support.RustTarget;
+ import java.time.Instant;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -15,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.actuate.observability.AutoCon
+ import org.springframework.boot.test.context.SpringBootTest;
+ import org.springframework.boot.test.context.TestConfiguration;
+ import org.springframework.boot.test.web.client.TestRestTemplate;
++import org.springframework.boot.web.client.RestTemplateBuilder;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Import;
+ import org.springframework.context.annotation.Primary;
+@@ -46,21 +48,32 @@ import org.testcontainers.containers.PostgreSQLContainer;
+       "logging.level.org.hibernate.engine.jdbc.batch.internal.BatchingBatch=OFF"
+     })
+ @AutoConfigureObservability
+-@Import(AbstractPostgresIT.TestClockConfig.class)
++@Import({AbstractPostgresIT.TestClockConfig.class, RustTargetBeans.class})
+ public abstract class AbstractPostgresIT {
+ 
++  // With -Dseatlock.target=rust the database is the one the external service uses (no container).
+   static final PostgreSQLContainer<?> POSTGRES =
+-      new PostgreSQLContainer<>("postgres:16-alpine")
+-          .withDatabaseName("seats")
+-          .withUsername("seats")
+-          .withPassword("seats");
++      RustTarget.enabled()
++          ? null
++          : new PostgreSQLContainer<>("postgres:16-alpine")
++              .withDatabaseName("seats")
++              .withUsername("seats")
++              .withPassword("seats");
+ 
+   static {
+-    POSTGRES.start();
++    if (POSTGRES != null) {
++      POSTGRES.start();
++    }
+   }
+ 
+   @DynamicPropertySource
+   static void datasource(DynamicPropertyRegistry registry) {
++    if (POSTGRES == null) {
++      registry.add("spring.datasource.url", RustTarget::jdbcUrl);
++      registry.add("spring.datasource.username", () -> "seats");
++      registry.add("spring.datasource.password", () -> "seats");
++      return;
++    }
+     registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+     registry.add("spring.datasource.username", POSTGRES::getUsername);
+     registry.add("spring.datasource.password", POSTGRES::getPassword);
+@@ -81,6 +94,9 @@ public abstract class AbstractPostgresIT {
+ 
+   @BeforeEach
+   void resetClock() {
++    if (RustTarget.enabled()) {
++      rest = new TestRestTemplate(new RestTemplateBuilder().rootUri(RustTarget.baseUrl()));
++    }
+     clock.set(Instant.now());
+   }
+ 
+diff --git a/src/test/java/dev/seatlock/it/ConcurrencyIT.java b/src/test/java/dev/seatlock/it/ConcurrencyIT.java
+index 0599400..225f88e 100644
+--- a/src/test/java/dev/seatlock/it/ConcurrencyIT.java
++++ b/src/test/java/dev/seatlock/it/ConcurrencyIT.java
+@@ -2,11 +2,13 @@ package dev.seatlock.it;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.junit.jupiter.api.Assumptions.assumeFalse;
+ 
+ import com.fasterxml.jackson.databind.JsonNode;
+ import dev.seatlock.domain.HoldStatus;
+ import dev.seatlock.repository.HoldRepository;
+ import dev.seatlock.service.ReservationService;
++import dev.seatlock.support.RustTarget;
+ import java.time.Duration;
+ import java.time.Instant;
+ import java.util.ArrayList;
+@@ -290,6 +292,10 @@ class ConcurrencyIT extends AbstractPostgresIT {
+    */
+   @Test
+   void expiryWorkingFromAStaleHoldIsRejectedByTheHoldVersion() {
++    assumeFalse(
++        RustTarget.enabled(),
++        "white-box: drives a JPA persistence context inside the Java service; the Rust twin is"
++            + " service::db_tests::expiry_working_from_a_stale_hold_is_rejected_by_the_hold_version");
+     UUID eventId = createEvent(1, 2);
+     List<UUID> seats = seatIds(eventId);
+     UUID holdId = id(hold(eventId, seats, "stale-sweeper"));
+diff --git a/src/test/java/dev/seatlock/it/RustTargetBeans.java b/src/test/java/dev/seatlock/it/RustTargetBeans.java
+new file mode 100644
+index 0000000..65d885f
+--- /dev/null
++++ b/src/test/java/dev/seatlock/it/RustTargetBeans.java
+@@ -0,0 +1,117 @@
++package dev.seatlock.it;
++
++import dev.seatlock.config.ReservationProperties;
++import dev.seatlock.idempotency.IdempotencyCleanupJob;
++import dev.seatlock.idempotency.IdempotencyStore;
++import dev.seatlock.repository.BookingRepository;
++import dev.seatlock.repository.EventRepository;
++import dev.seatlock.repository.HoldRepository;
++import dev.seatlock.repository.SeatRepository;
++import dev.seatlock.service.HoldExpiryJob;
++import dev.seatlock.service.ReservationMetrics;
++import dev.seatlock.service.ReservationService;
++import dev.seatlock.support.RustTarget;
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
++import java.time.Clock;
++import java.time.Instant;
++import java.util.UUID;
++import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
++import org.springframework.boot.test.context.TestConfiguration;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Primary;
++import org.springframework.orm.ObjectOptimisticLockingFailureException;
++import org.springframework.transaction.PlatformTransactionManager;
++
++/**
++ * With {@code -Dseatlock.target=rust}, the beans the tests call directly run their work in the
++ * Rust service through its test hooks instead of in the in-process Java service.
++ */
++@TestConfiguration(proxyBeanMethods = false)
++@ConditionalOnProperty(name = "seatlock.target", havingValue = "rust")
++class RustTargetBeans {
++
++  @Bean
++  @Primary
++  HoldExpiryJob remoteHoldExpiryJob(
++      ReservationService reservations,
++      ReservationProperties properties,
++      ReservationMetrics metrics,
++      Clock clock) {
++    return new RemoteHoldExpiryJob(reservations, properties, metrics, clock);
++  }
++
++  @Bean
++  @Primary
++  IdempotencyCleanupJob remoteCleanupJob(
++      IdempotencyStore store, ReservationProperties properties, Clock clock) {
++    return new RemoteCleanupJob(store, properties, clock);
++  }
++
++  @Bean
++  @Primary
++  ReservationService remoteReservationService(
++      EventRepository events,
++      SeatRepository seats,
++      HoldRepository holds,
++      BookingRepository bookings,
++      ReservationProperties properties,
++      ReservationMetrics metrics,
++      Clock clock,
++      PlatformTransactionManager transactionManager) {
++    return new RemoteReservationService(
++        events, seats, holds, bookings, properties, metrics, clock, transactionManager);
++  }
++
++  public static class RemoteHoldExpiryJob extends HoldExpiryJob {
++    RemoteHoldExpiryJob(
++        ReservationService r, ReservationProperties p, ReservationMetrics m, Clock c) {
++      super(r, p, m, c);
++    }
++
++    @Override
++    public int sweep() {
++      return RustTarget.post("/__test/jobs/expire", "{}").get("expired").asInt();
++    }
++  }
++
++  public static class RemoteCleanupJob extends IdempotencyCleanupJob {
++    RemoteCleanupJob(IdempotencyStore s, ReservationProperties p, Clock c) {
++      super(s, p, c);
++    }
++
++    @Override
++    public void purgeExpired() {
++      RustTarget.post("/__test/jobs/idempotency-cleanup", "{}");
++    }
++  }
++
++  public static class RemoteReservationService extends ReservationService {
++    RemoteReservationService(
++        EventRepository events,
++        SeatRepository seats,
++        HoldRepository holds,
++        BookingRepository bookings,
++        ReservationProperties properties,
++        ReservationMetrics metrics,
++        Clock clock,
++        PlatformTransactionManager transactionManager) {
++      super(events, seats, holds, bookings, properties, metrics, clock, transactionManager);
++    }
++
++    /** Same contract as the Java method: true = expired, false = nothing to do, throws on a lost race. */
++    @Override
++    public boolean expireHold(UUID holdId, Instant now) {
++      String at = URLEncoder.encode(now.toString(), StandardCharsets.UTF_8);
++      String result =
++          RustTarget.post("/__test/holds/" + holdId + "/expire?at=" + at, "{}")
++              .get("result")
++              .asText();
++      return switch (result) {
++        case "expired" -> true;
++        case "not-active" -> false;
++        default -> throw new ObjectOptimisticLockingFailureException("Hold", holdId);
++      };
++    }
++  }
++}
+diff --git a/src/test/java/dev/seatlock/it/ScheduledExpiryIT.java b/src/test/java/dev/seatlock/it/ScheduledExpiryIT.java
+index ed04f52..9cee2ad 100644
+--- a/src/test/java/dev/seatlock/it/ScheduledExpiryIT.java
++++ b/src/test/java/dev/seatlock/it/ScheduledExpiryIT.java
+@@ -3,11 +3,13 @@ package dev.seatlock.it;
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.awaitility.Awaitility.await;
+ 
++import dev.seatlock.support.RustTarget;
+ import java.time.Duration;
+ import java.time.Instant;
+ import java.util.List;
+ import java.util.UUID;
+ import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
+ import org.springframework.test.annotation.DirtiesContext;
+ import org.springframework.test.context.DynamicPropertyRegistry;
+@@ -23,12 +25,25 @@ class ScheduledExpiryIT extends AbstractPostgresIT {
+ 
+   @DynamicPropertySource
+   static void enableScheduling(DynamicPropertyRegistry registry) {
++    if (RustTarget.enabled()) {
++      return; // the Rust service's scheduler must do the work, not this Java context's
++    }
+     registry.add("seats.scheduling.enabled", () -> "true");
+     registry.add("seats.expiry-sweep-interval", () -> "PT0.2S");
+   }
+ 
++  @BeforeEach
++  void startRemoteScheduler() {
++    if (RustTarget.enabled()) {
++      RustTarget.scheduling(true, 200);
++    }
++  }
++
+   @AfterEach
+   void stopTime() {
++    if (RustTarget.enabled()) {
++      RustTarget.scheduling(false, 200);
++    }
+     clock.set(Instant.now()); // do not leave this context's sweeper running ahead of real time
+   }
+ 
+diff --git a/src/test/java/dev/seatlock/support/MutableClock.java b/src/test/java/dev/seatlock/support/MutableClock.java
+index b47b0b1..2fc21e8 100644
+--- a/src/test/java/dev/seatlock/support/MutableClock.java
++++ b/src/test/java/dev/seatlock/support/MutableClock.java
+@@ -17,11 +17,17 @@ public final class MutableClock extends Clock {
+   }
+ 
+   public void advance(Duration duration) {
+-    now.updateAndGet(t -> t.plus(duration));
++    Instant t = now.updateAndGet(v -> v.plus(duration));
++    if (RustTarget.enabled()) {
++      RustTarget.setClock(t);
++    }
+   }
+ 
+   public void set(Instant instant) {
+     now.set(instant);
++    if (RustTarget.enabled()) {
++      RustTarget.setClock(instant);
++    }
+   }
+ 
+   @Override
+diff --git a/src/test/java/dev/seatlock/support/RustTarget.java b/src/test/java/dev/seatlock/support/RustTarget.java
+new file mode 100644
+index 0000000..3074b20
+--- /dev/null
++++ b/src/test/java/dev/seatlock/support/RustTarget.java
+@@ -0,0 +1,69 @@
++package dev.seatlock.support;
++
++import com.fasterxml.jackson.databind.JsonNode;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import java.io.IOException;
++import java.net.URI;
++import java.net.http.HttpClient;
++import java.net.http.HttpRequest;
++import java.net.http.HttpResponse;
++import java.time.Instant;
++
++/**
++ * Points the integration tests at an external service (the Rust port) instead of the in-process
++ * Spring application. Enabled with {@code -Dseatlock.target=rust}; everything else is unchanged.
++ *
++ * <p>The tests still boot the Java context (for {@code JdbcTemplate} and the beans they autowire),
++ * but HTTP goes to {@code seatlock.baseUrl}, and the few white-box calls (move the clock, run a
++ * job now) are forwarded to the service's test-only {@code /__test} hooks.
++ */
++public final class RustTarget {
++
++  private static final HttpClient HTTP = HttpClient.newHttpClient();
++  private static final ObjectMapper JSON = new ObjectMapper();
++
++  private RustTarget() {}
++
++  public static boolean enabled() {
++    return "rust".equals(System.getProperty("seatlock.target"));
++  }
++
++  public static String baseUrl() {
++    return System.getProperty("seatlock.baseUrl", "http://localhost:8092");
++  }
++
++  public static String jdbcUrl() {
++    return System.getProperty("seatlock.jdbcUrl", "jdbc:postgresql://localhost:5433/seats_it");
++  }
++
++  /** Mirrors {@code MutableClock} into the service's clock. */
++  public static void setClock(Instant now) {
++    post("/__test/clock", "{\"instant\":\"" + now + "\"}");
++  }
++
++  /** Runtime equivalent of seats.scheduling.enabled / seats.expiry-sweep-interval. */
++  public static void scheduling(boolean enabled, long intervalMillis) {
++    post("/__test/scheduling", "{\"enabled\":" + enabled + ",\"intervalMillis\":" + intervalMillis + "}");
++  }
++
++  public static JsonNode post(String path, String body) {
++    try {
++      HttpResponse<String> r =
++          HTTP.send(
++              HttpRequest.newBuilder(URI.create(baseUrl() + path))
++                  .header("Content-Type", "application/json")
++                  .POST(HttpRequest.BodyPublishers.ofString(body))
++                  .build(),
++              HttpResponse.BodyHandlers.ofString());
++      if (r.statusCode() >= 300) {
++        throw new IllegalStateException(path + " -> " + r.statusCode() + " " + r.body());
++      }
++      return JSON.readTree(r.body());
++    } catch (IOException e) {
++      throw new IllegalStateException("test hook " + path + " failed", e);
++    } catch (InterruptedException e) {
++      Thread.currentThread().interrupt();
++      throw new IllegalStateException(e);
++    }
++  }
++}

@@ -28,3 +28,4 @@ Differences between the Java service and the Rust port, in the order the oracle 
 | 20 | Diff | OpenAPI document keys in springdoc order | Round-tripping through `serde_json::Value` sorts keys | Serve the captured text; substitute only `servers[0].url` |
 | 21 | Diff | 405/OPTIONS bodies | Per-route middleware never saw axum's 405: axum rewrites `Allow` *after* route layers | Middleware moved around the whole router, with a route table for `Allow` and the metrics `uri` tag |
 | 22 | Diff | `Allow` order changes between JVM restarts (hash set) | n/a | Accepted difference, compared as a set |
+| 23 | Integration tests | Spring binds `SEATLOCK_TEST_HOOKS=1`-style flags leniently (`1`, `yes`, `on`) | `bool::from_str` accepts only `true`/`false`: the service exited at startup, and the tests saw only `UnresolvedAddressException` for its container | `config::flag`; `it/run.sh` now waits for the service and prints its logs if it never comes up |
