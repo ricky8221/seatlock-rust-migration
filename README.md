@@ -61,6 +61,7 @@ bench/run.sh java           # the JVM as shipped
 bench/run.sh rust
 bench/summarize.py compare  # median of all runs per target -> bench/results/COMPARISON.md
 bench/jvm-nmt.sh            # diagnostic: where the JVM's memory goes (Native Memory Tracking)
+python3 bench/charts.py     # PNG charts for docs/WRITEUP.md -> docs/img/ (needs matplotlib)
 ```
 
 Each run starts from an empty database and goes through startup, idle, sustained load (k6 at a

@@ -3,7 +3,8 @@
 Reference service: [srujanmalakpata/seatlock](https://github.com/srujanmalakpata/seatlock) at
 `f345bda22c9e11d7a5b2440d5416c3e1e899500f`, pinned as the `reference/` submodule and never modified.
 Reproduction steps are in the [README](../README.md); the interactive benchmark report is
-[`bench/results/REPORT.html`](../bench/results/REPORT.html).
+[`bench/results/REPORT.html`](../bench/results/REPORT.html). The charts below are regenerated from
+the committed results with `python3 bench/charts.py` (needs matplotlib).
 
 ## Summary
 
@@ -20,6 +21,10 @@ Reproduction steps are in the [README](../README.md); the interactive benchmark 
 
 Medians of three runs per target, ranges in brackets. Same container limits for every target
 (2 CPUs, 1 GiB, no swap) on the same machine (Docker Desktop, aarch64, the architecture of Graviton).
+
+![Resident memory through a benchmark run](img/memory-timeline.png)
+
+![Resident memory by phase](img/memory-by-phase.png)
 
 Functional parity:
 
@@ -70,6 +75,8 @@ Tracking then showed where the remaining memory goes:
 | Thread stacks | 19 MB |
 | Other | 25 MB |
 | **Total** | **380 MB** (VmRSS 409 MB) |
+
+![Where the JVM's memory goes, against the whole Rust process](img/jvm-nmt-vs-rust.png)
 
 Even with the heap set to zero, the JVM commits about 246 MB of non-heap memory for this service.
 Tuning took 91 MiB off the peak but only 18.5 MiB off idle. What remains is runtime that no flag
@@ -150,6 +157,8 @@ What the migration removed, measured against the tuned JVM, then the Rust-side e
 | Threads: async runtime instead of thread-per-request | 72 threads | 3 threads | 19 MB of thread stacks in the shipped JVM (NMT) → 2 workers + main |
 | Memory returned after the peak | 2.0 MiB returned | 2.2 MiB returned | both keep most of their peak |
 
+![Rust memory on its own scale](img/memory-rust-zoom.png)
+
 **Rust-side experiments** (vs the plain build; noise band from the three plain runs)
 
 | Experiment | Runs | Peak RSS | Sustained RSS | Latency / throughput | Verdict |
@@ -159,6 +168,8 @@ What the migration removed, measured against the tuned JVM, then the Rust-side e
 | `MALLOC_ARENA_MAX=2` | 1 | +2.8 MiB | +1.8 MiB | unchanged | Rejected |
 | mimalloc | 1 | +8.3 MiB | +9.2 MiB | unchanged | Rejected |
 | jemalloc | 1 | +24.4 MiB | +20.2 MiB | unchanged | Rejected |
+
+![Rust optimization experiments: change in peak RSS](img/rust-experiments.png)
 
 Why `1worker` isn't the default: one worker kept up here because the peak is bound by Postgres,
 not by the service's CPU. A CPU-heavier endpoint would lose throughput. It belongs on small
