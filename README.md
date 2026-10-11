@@ -7,6 +7,31 @@ Data JPA), ported to Rust with full functional parity and a measured reduction i
 The original is pinned as a git submodule in `reference/` at
 `f345bda22c9e11d7a5b2440d5416c3e1e899500f` and is never modified.
 
+## Results
+
+| | Java as shipped | Java tuned for memory | Rust | Rust vs tuned Java |
+|---|---|---|---|---|
+| RSS idle | 294.2 MiB | 275.7 MiB | **4.4 MiB** | −98% |
+| RSS under sustained load (p50) | 383.3 MiB | 333.2 MiB | **7.8 MiB** | −98% |
+| RSS peak | 457.3 MiB | 366.6 MiB | **18.9 MiB** | −95% |
+| Sustained p99 latency | 30.7 ms | 44.3 ms | **5.6 ms** | −87% |
+| Peak throughput | 1,887 req/s | 1,894 req/s | **1,902 req/s** | equal |
+
+Medians of three runs per target, same container limits (2 CPUs, 1 GiB, no swap).
+
+Parity:
+
+- 1,638 of 1,638 exchanges identical to Java after normalization.
+- 0 invariant violations in the concurrency races.
+- 26 of the 27 upstream integration tests pass against Rust; the 27th is white-box and has a
+  Rust twin test.
+
+**[Write-up](docs/WRITEUP.md)** (approach, lessons, optimizations with MiB, improvements,
+challenges, gotchas) · [Benchmark comparison](bench/results/COMPARISON.md) ·
+[Interactive report](bench/results/REPORT.html) (open locally; GitHub shows its source) · [Parity findings](parity/FINDINGS.md)
+
+![Resident memory through a benchmark run](docs/img/memory-timeline.png)
+
 | Path | What it is |
 |---|---|
 | `reference/` | The original Java service at the pinned commit |
@@ -68,6 +93,47 @@ Each run starts from an empty database and goes through startup, idle, sustained
 constant ~440 req/s for 5 minutes), cooldown, peak (a flash-sale burst on 200 seats, then a ramp
 to saturation) and post-peak, sampling the service's resident memory every second. Run each target
 three times; the comparison reports medians. Committed results are in `bench/results/`.
+
+The Rust optimization experiments (each compared with the plain `rust` runs):
+
+```bash
+bench/run.sh rust-mimalloc run1                              # allocator builds (Cargo features)
+bench/run.sh rust-jemalloc run1
+VARIANT=arena2  MALLOC_ARENA_MAX=2     bench/run.sh rust run1   # env-only variants
+VARIANT=pool5   DB_POOL_SIZE=5         bench/run.sh rust run1
+VARIANT=1worker TOKIO_WORKER_THREADS=1 bench/run.sh rust run1   # the one kept: also run2, run3
+```
+
+### Why a run takes about 13 minutes
+
+A run is a fixed timeline, not a fixed amount of work, so a faster service does not finish sooner:
+
+| Phase | Duration | Why it is that long |
+|---|---|---|
+| Startup | ~5–30 s | Compose up, Flyway, wait for `/actuator/health` |
+| Idle | 60 s | Lets startup allocations settle, so idle RSS is a floor rather than a startup spike |
+| Sustained | 5 min | Long enough for heaps, caches, pools and allocator arenas to reach steady state |
+| Cooldown | 30 s | Separates the two load phases in the memory timeline |
+| Peak | ~3.8 min | A flash-sale burst, then a ramp to saturation |
+| Post-peak | 60 s | Shows how much memory is returned after the spike |
+
+k6 sends requests at a constant arrival rate (an open model), so latency and memory are compared
+at the same offered load. That's why the phases can't end early.
+
+The committed results are 16 runs:
+
+| What | Runs | Time |
+|---|---|---|
+| Main comparison: `java`, `java-tuned`, `rust` × 3 | 9 | about 2 hours |
+| Rust experiments: 5 screening runs, plus 2 more to confirm `1worker` | 7 | about 90 minutes |
+
+The allocator builds also compile a new image the first time. On a laptop, wrap a batch in
+`caffeinate -i` so the Mac doesn't sleep mid-run.
+
+`IDLE_SECONDS`, `POST_PEAK_SECONDS`, `COOLDOWN_SECONDS` and `DURATION` shorten a run for a smoke
+test (the peak phase has no knob). Results are only comparable between runs made with the same
+settings, so all committed results use the defaults: a shortened run reads a few MiB higher
+because the service has not settled.
 
 ### Why there are two Java baselines
 

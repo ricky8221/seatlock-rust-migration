@@ -30,7 +30,12 @@ Functional parity:
 
 - **Oracle diff:** 1,638 of 1,638 request/response exchanges identical after normalization
   (~140 curated cases plus a 1,500-step seeded random walk).
-- **Concurrency races:** six races, identical outcomes, 0 invariant violations on either service.
+- **Concurrency races:** six races, 0 invariant violations on either service across repeated
+  runs. The three single-winner races (50 holds on one seat, 20 confirms of one hold, 10 cancels
+  of one booking) always produce identical counts. In the other three (overlapping holds,
+  release vs confirm, 20 retries with one idempotency key), which request wins depends on
+  thread scheduling and varies between runs on *both* services. The contract held every time:
+  exactly one winner per round, no seat claimed twice, one hold per idempotency key.
 - **Upstream integration tests:** 26 of the 27 pass against Rust unchanged. The 27th is
   white-box (it holds a JPA persistence context open across an HTTP call) and has a Rust twin test.
 
@@ -195,18 +200,21 @@ dominates. That isn't the case at 8 MiB.
 Not done in this submission; ordered by what I'd do next.
 
 1. **Size the deployment to the measured footprint.** This is the largest saving and costs no
-   code. Rust peaks at 19 MiB inside a 1 GiB limit. On ECS Fargate the smallest task size
-   (0.25 vCPU / 512 MB) is far more than enough, against a JVM that needs its 1 GiB. On EC2 or
-   ECS-on-EC2, bin-packing gains even more.
+   code. Rust peaks at 19 MiB, the tuned JVM at 367 MiB. Where the platform bills by reserved
+   memory in fine steps (ECS on EC2, Kubernetes), that is roughly 19× more replicas per GiB.
+
+   On Fargate the gain is smaller than the RSS ratio suggests. The smallest task size
+   (0.25 vCPU / 512 MB) already fits the tuned JVM, though with little headroom. There the
+   realistic win is moving JVM tasks sized at 1 GB down to the minimum, not a 19× saving.
 2. **Use `TOKIO_WORKER_THREADS=1` on ≤1 vCPU tasks.** Measured −2.5 MiB at peak. It's a config
    change, but it should be tied to the task's CPU size, not hard-coded.
 3. **Bound peak memory with a concurrency limit.** RSS grows from 7.8 to 18.9 MiB at saturation:
    in-flight requests and their buffers. A `tower` concurrency limit with load shedding (503 +
    `Retry-After`) would cap the peak at a chosen point. Not measured; it trades excess load
    for memory, so the limit needs choosing from the throughput curve.
-4. **Return memory after the peak.** Rust keeps about 2 MiB less than its peak afterwards (glibc
-   retains freed pages). A periodic `malloc_trim(0)` when idle should return most of the rest.
-   That's a few MiB at most, and a small change.
+4. **Return memory after the peak.** The peak adds 11 MiB over steady state and Rust gives back
+   only about 2 MiB of it afterwards (glibc keeps freed pages). A periodic `malloc_trim(0)` when
+   idle should return most of the rest. That's a few MiB at most, and a small change.
 5. **Shrink idempotency-record handling.** Stored responses are replayed byte for byte from
    Postgres. Large bodies are read fully into memory. Streaming them would only matter with
    large responses, which this API doesn't have today.
@@ -271,8 +279,8 @@ From the [findings log](../parity/FINDINGS.md) (23 entries) and the benchmark ha
 
 - **Limits:** one service at a time, 2 CPUs / 1 GiB / no swap for every target, k6 in its own
   container with its own CPU limit.
-- **Phases:** startup → idle (60 s) → sustained (constant ~440 req/s mixed browse/hold/confirm
-  traffic, 5 min) → cooldown → peak (a flash-sale burst on 200 seats, then a ramp to
+- **Phases:** startup → idle (60 s) → sustained (constant-arrival mixed browse/hold/confirm
+  traffic, ~414 req/s measured, 5 min) → cooldown → peak (a flash-sale burst on 200 seats, then a ramp to
   saturation) → post-peak (60 s).
 - **Memory:** VmRSS of PID 1 every second. The cgroup's memory figure is recorded alongside it.
 - **Runs:** three per target, medians reported, invalid runs excluded automatically.
