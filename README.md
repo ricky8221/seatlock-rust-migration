@@ -28,7 +28,7 @@ Parity:
 
 **[Write-up](docs/WRITEUP.md)** (approach, lessons, optimizations with MiB, improvements,
 challenges, gotchas) · [Benchmark comparison](bench/results/COMPARISON.md) ·
-[Report (PDF)](bench/results/REPORT.pdf) · [Interactive report](bench/results/REPORT.html) (open locally; GitHub shows its source) · [Parity findings](parity/FINDINGS.md)
+[Report (PDF)](bench/results/REPORT.pdf) · [Interactive report](https://ricky8221.github.io/seatlock-rust-migration/bench/results/REPORT.html) · [Parity findings](parity/FINDINGS.md)
 
 ![Resident memory through a benchmark run](docs/img/memory-timeline.png)
 

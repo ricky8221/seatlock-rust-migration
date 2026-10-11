@@ -2,8 +2,8 @@
 
 Reference service: [srujanmalakpata/seatlock](https://github.com/srujanmalakpata/seatlock) at
 `f345bda22c9e11d7a5b2440d5416c3e1e899500f`, pinned as the `reference/` submodule and never modified.
-Reproduction steps are in the [README](../README.md); the interactive benchmark report is
-[`bench/results/REPORT.html`](../bench/results/REPORT.html). The charts below are regenerated from
+Reproduction steps are in the [README](../README.md); the benchmark report is
+[online](https://ricky8221.github.io/seatlock-rust-migration/bench/results/REPORT.html) and [as a PDF](../bench/results/REPORT.pdf). The charts below are regenerated from
 the committed results with `python3 bench/charts.py` (needs matplotlib).
 
 ## Summary
