@@ -1,0 +1,7 @@
+{"race": "50 holds, 1 seat", "outcome": {"201": 1, "409": 49}}
+{"race": "30 overlapping holds", "outcome": {"201": 2, "409": 28, "seats claimed twice": 0}}
+{"race": "20 confirms, 1 hold", "outcome": {"201": 1, "409": 19}}
+{"race": "release vs confirm x15", "outcome": {"confirm 409 / release 200": 15}}
+{"race": "20 retries, 1 key", "outcome": {"201": 1, "409": 19, "distinct holds": 1}}
+{"race": "10 cancels, 1 booking", "outcome": {"200": 1, "409": 9}}
+violations|0

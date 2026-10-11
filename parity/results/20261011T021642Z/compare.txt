@@ -1,0 +1,2 @@
+exchanges compared: 1638, identical after normalization: 1638
+accepted differences: 0, unexplained findings: 0
