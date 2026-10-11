@@ -1,0 +1,42 @@
+target=rust@1worker
+service=rust variant=1worker tokio_worker_threads=1 malloc_arena_max=default
+label=run2
+started_utc=2026-10-11T18:54:36Z
+repo_commit=21907dbac08ef4ff52078ebda3b77ed8070a38d0
+reference_commit=f345bda22c9e11d7a5b2440d5416c3e1e899500f
+app_cpus=2 app_mem=1g db_pool=10
+docker_arch=aarch64 docker_cpus=10 docker_mem=8222072832
+  rust:
+    profiles:
+      - rust
+    build:
+      context: /Users/Rickychen/Projects/seatlock-migration/seatlock-rs
+      dockerfile: Dockerfile
+    cpus: 2
+    container_name: sl-rust
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      DB_PASSWORD: seats
+      DB_POOL_SIZE: "10"
+      DB_URL: jdbc:postgresql://postgres:5432/seats
+      DB_USER: seats
+      MALLOC_ARENA_MAX: null
+      RUST_LOG: info
+      TOKIO_WORKER_THREADS: "1"
+    image: seatlock-rs:local
+    mem_limit: "1073741824"
+    memswap_limit: "1073741824"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "8080"
+        protocol: tcp
+networks:
+  default:
+startup_seconds=0
