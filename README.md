@@ -56,7 +56,7 @@ it/run.sh rust   # the same tests against the Rust service
 ### 3. Benchmarks (about 13 minutes per run)
 
 ```bash
-bench/run.sh java-tuned     # the JVM tuned for memory: the baseline Rust is compared against
+bench/run.sh java-tuned     # the JVM tuned for memory: the baseline Rust is compared against (see below)
 bench/run.sh java           # the JVM as shipped
 bench/run.sh rust
 bench/summarize.py compare  # median of all runs per target -> bench/results/COMPARISON.md
@@ -67,6 +67,29 @@ Each run starts from an empty database and goes through startup, idle, sustained
 constant ~440 req/s for 5 minutes), cooldown, peak (a flash-sale burst on 200 seats, then a ramp
 to saturation) and post-peak, sampling the service's resident memory every second. Run each target
 three times; the comparison reports medians. Committed results are in `bench/results/`.
+
+### Why there are two Java baselines
+
+Rust is compared against the JVM **tuned for memory**, not only against the JVM as shipped.
+The shipped settings let the heap grow to 75% of the container and Tomcat run 200 threads, so
+comparing against them alone would overstate the gain: much of that memory is headroom that a
+configuration change removes, no rewrite needed. The tuned variant (`java-tuned` in
+`compose.yaml`) applies the changes a JVM team would reach for first:
+
+| Flag | Why |
+|---|---|
+| `-XX:+UseSerialGC` | The smallest-footprint collector for a 2-CPU container |
+| `-Xms64m -Xmx256m` | Caps heap headroom (the shipped image allows ~768 MB) |
+| `-Xss512k` | Smaller thread stacks |
+| `-XX:ReservedCodeCacheSize=64m`, `-XX:MaxMetaspaceSize=128m` | Caps the JIT code cache and class metadata |
+| `SERVER_TOMCAT_THREADS_MAX=50` | 50 request threads instead of 200 |
+
+Measuring both separates the two effects. Tuning recovers most of the JVM's *headroom* at peak,
+but barely moves its idle floor: what remains is runtime (class metadata, JIT code, symbols,
+thread stacks) that no flag removes, as `bench/jvm-nmt.sh` shows. Tuning also has a cost:
+SerialGC's stop-the-world pauses raise tail latency. The migration case therefore rests on the
+comparison against the *tuned* JVM, which is the percentage column in
+`bench/results/COMPARISON.md`; the shipped JVM is reported alongside for context.
 
 ### 4. Rust unit and database tests (optional, needs Rust 1.85+)
 
