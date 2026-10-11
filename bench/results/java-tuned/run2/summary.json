@@ -1,56 +1,56 @@
 {
   "target": "java-tuned",
   "label": "run2",
-  "startup_seconds": 5,
+  "startup_seconds": 4,
   "memory": {
     "rss_mib": {
-      "idle": 273.7,
-      "sustained_p50": 328.6,
-      "sustained_max": 336.5,
+      "idle": 273.8,
+      "sustained_p50": 330.5,
+      "sustained_max": 349.0,
       "peak": 363.7,
       "post_peak": 361.1
     },
     "cgroup_mib": {
-      "idle": 327.2,
-      "sustained_p50": 383.0,
+      "idle": 326.9,
+      "sustained_p50": 343.5,
       "peak": 418.4
     },
     "threads": {
-      "idle": 31.0,
+      "idle": 31,
       "peak": 72
     },
-    "samples": 682
+    "samples": 1228
   },
   "sustained": {
     "latency_ms": {
-      "p50": 1.27,
-      "p95": 3.73,
-      "p99": 76.81,
-      "max": 938.69
+      "p50": 1.5,
+      "p95": 43.58,
+      "p99": 60001.12,
+      "max": 60026.92
     },
-    "throughput_rps": 412.6,
-    "requests": 124470,
-    "failed_rate": 0,
-    "dropped_iterations": 26,
-    "unexpected_status": 0,
-    "holds_placed": 11003,
-    "hold_conflicts": 998,
-    "bookings_confirmed": 5978
+    "throughput_rps": 214.8,
+    "requests": 71269,
+    "failed_rate": 0.43227770840056684,
+    "dropped_iterations": 38325,
+    "unexpected_status": 30808,
+    "holds_placed": 3729,
+    "hold_conflicts": 133,
+    "bookings_confirmed": 2031
   },
   "peak": {
     "latency_ms": {
-      "p50": 1.43,
-      "p95": 88.42,
-      "p99": 118.29,
-      "max": 403.95
+      "p50": 60003.39,
+      "p95": 60003.39,
+      "p99": 60003.39,
+      "max": 60003.39
     },
-    "throughput_rps": 1873.7,
-    "requests": 423397,
-    "failed_rate": 0,
-    "dropped_iterations": 3389,
+    "throughput_rps": 0.0,
+    "requests": 1,
+    "failed_rate": 1,
+    "dropped_iterations": 0,
     "unexpected_status": 0,
-    "holds_placed": 35073,
-    "hold_conflicts": 72339,
-    "bookings_confirmed": 19117
+    "holds_placed": 0,
+    "hold_conflicts": 0,
+    "bookings_confirmed": 0
   }
 }

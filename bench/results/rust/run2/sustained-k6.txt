@@ -1,0 +1,25 @@
+     ✓ status in 201/409
+     ✓ status in 200
+
+     biz_bookings_confirmed.........: 6105    20.308798/s
+     biz_hold_conflicts.............: 967     3.216807/s
+     biz_holds_placed...............: 11034   36.705532/s
+   ✓ biz_unexpected_status..........: 0       0/s
+     checks.........................: 100.00% ✓ 124696     ✗ 0     
+     data_received..................: 365 MB  1.2 MB/s
+     data_sent......................: 19 MB   63 kB/s
+   ✓ dropped_iterations.............: 0       0/s
+     http_req_blocked...............: avg=7.11µs  min=667ns    med=2.08µs   p(90)=6.16µs  p(95)=8.16µs  p(99)=19.6µs   max=84.93ms 
+     http_req_connecting............: avg=2.52µs  min=0s       med=0s       p(90)=0s      p(95)=0s      p(99)=0s       max=71.33ms 
+     http_req_duration..............: avg=1.37ms  min=161.91µs med=977.58µs p(90)=2.63ms  p(95)=3.31ms  p(99)=5.96ms   max=118.13ms
+       { expected_response:true }...: avg=1.37ms  min=161.91µs med=977.58µs p(90)=2.63ms  p(95)=3.31ms  p(99)=5.96ms   max=118.13ms
+     http_req_failed................: 0.00%   ✓ 0          ✗ 124746
+     http_req_receiving.............: avg=34.95µs min=4.79µs   med=23.7µs   p(90)=60.95µs p(95)=81.54µs p(99)=159.79µs max=78.29ms 
+     http_req_sending...............: avg=15.17µs min=2.12µs   med=11.16µs  p(90)=26.29µs p(95)=33.95µs p(99)=57.79µs  max=42.12ms 
+     http_req_tls_handshaking.......: avg=0s      min=0s       med=0s       p(90)=0s      p(95)=0s      p(99)=0s       max=0s      
+     http_req_waiting...............: avg=1.32ms  min=149.79µs med=936.02µs p(90)=2.55ms  p(95)=3.22ms  p(99)=5.86ms   max=118.02ms
+     http_reqs......................: 124746  414.978096/s
+     iteration_duration.............: avg=1.81ms  min=206.66µs med=1.03ms   p(90)=3.88ms  p(95)=5.84ms  p(99)=10.05ms  max=212.29ms
+     iterations.....................: 102002  339.318261/s
+     vus............................: 1       min=0        max=31  
+     vus_max........................: 100     min=100      max=100 

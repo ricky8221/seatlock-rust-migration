@@ -4,53 +4,53 @@
   "startup_seconds": 4,
   "memory": {
     "rss_mib": {
-      "idle": 293.3,
-      "sustained_p50": 390.0,
+      "idle": 290.9,
+      "sustained_p50": 384.5,
       "sustained_max": 402.0,
       "peak": 468.6,
-      "post_peak": 467.7
+      "post_peak": 465.4
     },
     "cgroup_mib": {
-      "idle": 277.8,
-      "sustained_p50": 376.3,
+      "idle": 275.7,
+      "sustained_p50": 371.5,
       "peak": 464.6
     },
     "threads": {
       "idle": 31.0,
       "peak": 222
     },
-    "samples": 682
+    "samples": 1363
   },
   "sustained": {
     "latency_ms": {
-      "p50": 1.26,
-      "p95": 3.63,
-      "p99": 40.12,
-      "max": 815.1
+      "p50": 1.25,
+      "p95": 3.55,
+      "p99": 30.69,
+      "max": 706.71
     },
-    "throughput_rps": 412.4,
-    "requests": 124470,
+    "throughput_rps": 413.4,
+    "requests": 124657,
     "failed_rate": 0,
-    "dropped_iterations": 9,
+    "dropped_iterations": 12,
     "unexpected_status": 0,
-    "holds_placed": 10951,
-    "hold_conflicts": 1051,
-    "bookings_confirmed": 6018
+    "holds_placed": 11039,
+    "hold_conflicts": 962,
+    "bookings_confirmed": 6062
   },
   "peak": {
     "latency_ms": {
-      "p50": 2.47,
-      "p95": 511.48,
-      "p99": 673.85,
-      "max": 1832.46
+      "p50": 1.55,
+      "p95": 146.5,
+      "p99": 263.56,
+      "max": 895.38
     },
-    "throughput_rps": 1781.2,
-    "requests": 402685,
+    "throughput_rps": 1887.3,
+    "requests": 426470,
     "failed_rate": 0,
-    "dropped_iterations": 22125,
+    "dropped_iterations": 3350,
     "unexpected_status": 0,
-    "holds_placed": 33997,
-    "hold_conflicts": 70657,
-    "bookings_confirmed": 18592
+    "holds_placed": 36409,
+    "hold_conflicts": 71241,
+    "bookings_confirmed": 19958
   }
 }
