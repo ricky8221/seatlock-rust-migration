@@ -10,6 +10,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 STEPS="${1:-1500}"; SEED="${2:-42}"
 OUT="parity/results/$(date -u +%Y%m%dT%H%M%SZ)"; mkdir -p "$OUT"
 
+source "$ROOT/scripts/stack-guard.sh"
+require_idle_stack
+
 cleanup() {
   docker rm -f sl-parity-java sl-parity-rust >/dev/null 2>&1 || true
   docker compose down -v --remove-orphans >/dev/null 2>&1 || true

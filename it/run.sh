@@ -16,6 +16,9 @@ case "$TARGET" in rust|java) ;; *) echo "usage: it/run.sh [rust|java]" >&2; exit
 MAVEN_IMAGE="maven:3.9.11-eclipse-temurin-21"
 NETWORK="seatlock-bench_default"
 
+source "$ROOT/scripts/stack-guard.sh"
+require_idle_stack
+
 cleanup() {
   docker rm -f sl-it-rust >/dev/null 2>&1 || true
   docker compose down -v --remove-orphans >/dev/null 2>&1 || true

@@ -28,24 +28,32 @@ KIB_PER_MIB = 1024
 
 
 def load_samples(run_dir: Path) -> list[dict]:
-    rows = []
+    """Samples of the *last* run recorded in memory.csv. Older versions of the sampler appended
+    when a run label was reused, so a file can hold several runs back to back; each starts where
+    elapsed_s goes back to 0, and only the last one matches the k6 summaries beside it."""
     with (run_dir / "memory.csv").open() as fh:
-        for row in csv.DictReader(fh):
-            if not row.get("vm_rss_kib"):
-                continue
-            rows.append(
-                {
-                    "elapsed": float(row["elapsed_s"]),
-                    "phase": row["phase"],
-                    "rss": int(row["vm_rss_kib"]) / KIB_PER_MIB,
-                    "hwm": int(row["vm_hwm_kib"]) / KIB_PER_MIB if row["vm_hwm_kib"] else None,
-                    "anon": int(row["rss_anon_kib"]) / KIB_PER_MIB if row["rss_anon_kib"] else None,
-                    "threads": int(row["threads"]) if row["threads"] else None,
-                    "cgroup": int(row["cgroup_current_bytes"]) / 2**20
-                    if row["cgroup_current_bytes"]
-                    else None,
-                }
-            )
+        raw = list(csv.DictReader(fh))
+    start = 0
+    for i in range(1, len(raw)):
+        if float(raw[i]["elapsed_s"]) < float(raw[i - 1]["elapsed_s"]):
+            start = i
+    rows = []
+    for row in raw[start:]:
+        if not row.get("vm_rss_kib"):
+            continue
+        rows.append(
+            {
+                "elapsed": float(row["elapsed_s"]),
+                "phase": row["phase"],
+                "rss": int(row["vm_rss_kib"]) / KIB_PER_MIB,
+                "hwm": int(row["vm_hwm_kib"]) / KIB_PER_MIB if row["vm_hwm_kib"] else None,
+                "anon": int(row["rss_anon_kib"]) / KIB_PER_MIB if row["rss_anon_kib"] else None,
+                "threads": int(row["threads"]) if row["threads"] else None,
+                "cgroup": int(row["cgroup_current_bytes"]) / 2**20
+                if row["cgroup_current_bytes"]
+                else None,
+            }
+        )
     return rows
 
 
@@ -131,13 +139,26 @@ def summarize_run(run_dir: Path) -> dict:
                 if "=" in part and not part.startswith("-"):
                     k, v = part.split("=", 1)
                     meta.setdefault(k, v)
+    sustained = k6_stats(run_dir / "sustained-summary.json")
+    peak = k6_stats(run_dir / "peak-summary.json")
+    problems = []
+    for name, phase in (("sustained", sustained), ("peak", peak)):
+        if phase is None:
+            problems.append(f"no {name} k6 summary")
+        elif phase["unexpected_status"] or phase["failed_rate"]:
+            problems.append(
+                f"{name}: {phase['unexpected_status']} unexpected statuses, failed rate {phase['failed_rate']:.1%}"
+            )
     summary = {
         "target": meta.get("target", run_dir.parent.name),
+        # An invalid run (errors, missing phases) is kept on disk but excluded from comparisons.
+        "valid": not problems,
+        "problems": problems,
         "label": meta.get("label", run_dir.name),
         "startup_seconds": int(meta["startup_seconds"]) if "startup_seconds" in meta else None,
         "memory": memory_stats(load_samples(run_dir)),
-        "sustained": k6_stats(run_dir / "sustained-summary.json"),
-        "peak": k6_stats(run_dir / "peak-summary.json"),
+        "sustained": sustained,
+        "peak": peak,
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
@@ -172,14 +193,19 @@ ROWS = [
 
 def compare(results_dir: Path) -> str:
     by_target: dict[str, list[dict]] = {}
-    for f in sorted(results_dir.glob("*/*/summary.json")):
-        s = json.loads(f.read_text())
+    excluded = []
+    for f in sorted(results_dir.glob("*/*/memory.csv")):
+        if not (f.parent / "meta.txt").exists():
+            continue  # not a bench/run.sh run (e.g. the NMT diagnostic)
+        s = summarize_run(f.parent)  # always recompute from the raw files
+        if not s.get("valid", True):
+            excluded.append(f"{s['target']}/{s['label']}: " + "; ".join(s["problems"]))
+            continue
         by_target.setdefault(s["target"], []).append(s)
-    order = [t for t in ("java", "java-tuned", "rust") if t in by_target] + sorted(
-        t for t in by_target if t not in ("java", "java-tuned", "rust")
-    )
-    if not order:
-        return "No summary.json files found. Run bench/run.sh first.\n"
+    order = [t for t in ("java", "java-tuned", "rust") if t in by_target]
+    variants = sorted(t for t in by_target if t not in ("java", "java-tuned", "rust"))
+    if not order and not variants:
+        return "No benchmark runs found. Run bench/run.sh first.\n"
 
     def median_of(target, path):
         if path is None:
@@ -221,7 +247,47 @@ def compare(results_dir: Path) -> str:
         if baseline
         else "\n"
     )
-    return "\n".join(lines) + "\n" + note
+    out = "\n".join(lines) + "\n" + note
+    if excluded:
+        out += "\nExcluded runs (invalid, re-run them):\n" + "".join(f"- {e}\n" for e in excluded)
+    if variants and "rust" in by_target:
+        out += "\n" + variant_table(variants, median_of, fmt)
+    return out
+
+
+VARIANT_ROWS = [
+    ("RSS idle (MiB)", ("memory", "rss_mib", "idle"), "MiB"),
+    ("RSS sustained p50 (MiB)", ("memory", "rss_mib", "sustained_p50"), "MiB"),
+    ("RSS peak (MiB)", ("memory", "rss_mib", "peak"), "MiB"),
+    ("RSS after peak (MiB)", ("memory", "rss_mib", "post_peak"), "MiB"),
+    ("Threads at peak", ("memory", "threads", "peak"), ""),
+    ("Sustained p99 (ms)", ("sustained", "latency_ms", "p99"), "ms"),
+    ("Peak throughput (req/s)", ("peak", "throughput_rps"), "req/s"),
+    ("Peak p99 (ms)", ("peak", "latency_ms", "p99"), "ms"),
+]
+
+
+def variant_table(variants, median_of, fmt) -> str:
+    """Rust optimization experiments, each as an absolute delta from the plain `rust` build."""
+    header = ["Metric", "rust (baseline)"] + [f"{v}" for v in variants]
+    lines = [
+        "## Rust optimization experiments (delta vs the plain `rust` build)",
+        "",
+        "| " + " | ".join(header) + " |",
+        "|" + "---|" * len(header),
+    ]
+    for title, path, unit in VARIANT_ROWS:
+        base = median_of("rust", path)
+        row = [title, fmt(base)]
+        for v in variants:
+            val = median_of(v, path)
+            if val is None or base is None:
+                row.append("–")
+            else:
+                d = val - base
+                row.append(f"{fmt(val)} ({d:+.1f})")
+        lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str]) -> int:

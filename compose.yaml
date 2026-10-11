@@ -123,9 +123,33 @@ services:
     image: seatlock-rs:local
     container_name: sl-rust
     <<: *app-limits
-    environment:
+    environment: &rust-env
       <<: *db-env
       RUST_LOG: ${RUST_LOG:-info}
+      # Optimization knobs, passed through only when set in the shell (bench/run.sh VARIANT=...).
+      TOKIO_WORKER_THREADS:
+      MALLOC_ARENA_MAX:
+    depends_on: *app-depends
+    ports: ["127.0.0.1:8080:8080"]
+
+  # Allocator experiments: the same service built with a different global allocator.
+  rust-mimalloc:
+    profiles: ["rust-mimalloc"]
+    build: { context: ./seatlock-rs, args: { FEATURES: mimalloc } }
+    image: seatlock-rs:mimalloc
+    container_name: sl-rust-mimalloc
+    <<: *app-limits
+    environment: *rust-env
+    depends_on: *app-depends
+    ports: ["127.0.0.1:8080:8080"]
+
+  rust-jemalloc:
+    profiles: ["rust-jemalloc"]
+    build: { context: ./seatlock-rs, args: { FEATURES: jemalloc } }
+    image: seatlock-rs:jemalloc
+    container_name: sl-rust-jemalloc
+    <<: *app-limits
+    environment: *rust-env
     depends_on: *app-depends
     ports: ["127.0.0.1:8080:8080"]
 

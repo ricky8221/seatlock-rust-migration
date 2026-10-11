@@ -5,20 +5,30 @@
 #
 # Memory is sampled every second for the whole run; each sample is tagged with its phase.
 #
-#   bench/run.sh <java|java-tuned|rust> [run-label]
+#   bench/run.sh <java|java-tuned|rust|rust-mimalloc|rust-jemalloc> [run-label]
+#
+# Optimization experiments: set VARIANT to name an env-only change, which is recorded in the
+# results path and meta.txt, e.g.
+#   VARIANT=1worker TOKIO_WORKER_THREADS=1 bench/run.sh rust run1   -> bench/results/rust@1worker/run1
+#   VARIANT=pool5 DB_POOL_SIZE=5 bench/run.sh rust run1
+#   VARIANT=arena2 MALLOC_ARENA_MAX=2 bench/run.sh rust run1
 #
 # Env overrides: IDLE_SECONDS (60), COOLDOWN_SECONDS (30), POST_PEAK_SECONDS (60),
 # plus the k6 knobs documented in bench/k6/*.js (DURATION, BROWSE_RPS, RESERVE_RPS, FLASH_RPS,
 # PEAK_RPS) and APP_CPUS / APP_MEM from compose.yaml.
 set -euo pipefail
 
-TARGET="${1:?usage: bench/run.sh <java|java-tuned|rust> [run-label]}"
-case "$TARGET" in java|java-tuned|rust) ;; *) echo "unknown target: $TARGET" >&2; exit 2 ;; esac
+TARGET="${1:?usage: bench/run.sh <java|java-tuned|rust|rust-mimalloc|rust-jemalloc> [run-label]}"
+case "$TARGET" in java|java-tuned|rust|rust-mimalloc|rust-jemalloc) ;; *) echo "unknown target: $TARGET" >&2; exit 2 ;; esac
+NAME="${TARGET}${VARIANT:+@$VARIANT}"   # what the results are filed and compared under
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 LABEL="${2:-$(date -u +%Y%m%dT%H%M%SZ)}"
-RUN_DIR="bench/results/${TARGET}/${LABEL}"
+RUN_DIR="bench/results/${NAME}/${LABEL}"
+source "$ROOT/scripts/stack-guard.sh"
+require_idle_stack
+rm -rf "$RUN_DIR"   # re-using a label replaces that run; never mix two runs' samples
 mkdir -p "$RUN_DIR"
 chmod a+rwx "$RUN_DIR"   # the k6 container (non-root) writes its summaries here
 PHASE_FILE="$RUN_DIR/phase"
@@ -38,13 +48,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== run: target=$TARGET label=$LABEL dir=$RUN_DIR"
+echo "== run: target=$NAME label=$LABEL dir=$RUN_DIR"
 docker compose --profile java --profile java-tuned --profile java-nmt --profile rust \
-  down -v --remove-orphans >/dev/null 2>&1 || true
+  --profile rust-mimalloc --profile rust-jemalloc down -v --remove-orphans >/dev/null 2>&1 || true
 
 # Record exactly what was measured.
 {
-  echo "target=$TARGET"
+  echo "target=$NAME"
+  echo "service=$TARGET variant=${VARIANT:-none} tokio_worker_threads=${TOKIO_WORKER_THREADS:-default} malloc_arena_max=${MALLOC_ARENA_MAX:-default}"
   echo "label=$LABEL"
   echo "started_utc=$(date -u +%FT%TZ)"
   echo "repo_commit=$(git rev-parse HEAD 2>/dev/null || echo uncommitted)"
@@ -80,7 +91,7 @@ sleep "$IDLE_SECONDS"
 k6() {
   docker compose --profile load run --rm \
     -e BASE_URL="http://${TARGET}:8080" \
-    -e SUMMARY_OUT="/results/${TARGET}/${LABEL}/$1-summary.json" \
+    -e SUMMARY_OUT="/results/${NAME}/${LABEL}/$1-summary.json" \
     -e DURATION -e BROWSE_RPS -e RESERVE_RPS -e FLASH_RPS -e PEAK_RPS -e DEBUG \
     k6 run --quiet "/scripts/$1.js"
 }
