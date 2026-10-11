@@ -1,0 +1,43 @@
+target=java
+label=run3
+started_utc=2026-10-11T00:34:05Z
+repo_commit=c67bd00ae0e82c048eeb15d0e30514531494ba87
+reference_commit=f345bda22c9e11d7a5b2440d5416c3e1e899500f
+app_cpus=2 app_mem=1g db_pool=10
+docker_arch=aarch64 docker_cpus=10 docker_mem=8222072832
+  java:
+    profiles:
+      - java
+    build:
+      context: /Users/Rickychen/Projects/seatlock-migration/reference
+      dockerfile: Dockerfile
+    cpus: 2
+    container_name: sl-java
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+        required: true
+    entrypoint:
+      - sh
+      - -c
+      - exec java $$JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher
+    environment:
+      DB_PASSWORD: seats
+      DB_POOL_SIZE: "10"
+      DB_URL: jdbc:postgresql://postgres:5432/seats
+      DB_USER: seats
+      JAVA_OPTS: -XX:MaxRAMPercentage=75
+      SPRING_FLYWAY_ENABLED: "false"
+    image: seatlock-java:f345bda
+    mem_limit: "1073741824"
+    memswap_limit: "1073741824"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "8080"
+        protocol: tcp
+  postgres:
+startup_seconds=4
